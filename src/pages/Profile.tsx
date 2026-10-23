@@ -45,24 +45,40 @@ const Profile = () => {
 
       if (storiesData) setMyStories(storiesData);
 
-      // 3. Busca os "Relatos Salvos" (A MÁGICA ACONTECE AQUI!)
-      // Puxamos a tabela de salvos e "expandimos" (join) para trazer a história e o autor dela
-      const { data: savedData } = await supabase
+      // 3. Consultar somente os IDs dos relatos salvos pelo usuário.
+      // Não fazer mais join direto com a tabela privada stories.
+      const { data: savedData, error: savedError } = await supabase
         .from("saved_stories")
-        .select(`
-          story_id,
-          stories (
-            *,
-            profiles (username)
-          )
-        `)
+        .select("story_id, created_at")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      if (savedData) {
-        // Limpa a estrutura dos dados para ficar igual à lista normal de histórias
-        const formattedSaved = savedData.map((item: any) => item.stories).filter(Boolean);
+      if (savedError) throw savedError;
+
+      const savedIds = (savedData ?? []).map((item) => item.story_id);
+      if (savedIds.length > 0) {
+        // stories_public não revela o proprietário dos relatos anônimos.
+        const { data: publicStories, error: publicError } = await supabase
+          .from("stories_public")
+          .select("*")
+          .in("id", savedIds);
+
+        if (publicError) throw publicError;
+
+        const storyById = new Map(
+          (publicStories ?? []).map((s: any) => [s.id, s])
+        );
+        // Preserva a ordem cronológica dos itens salvos.
+        const formattedSaved = savedIds
+          .map((storyId) => storyById.get(storyId))
+          .filter(Boolean)
+          .map((s: any) => ({
+            ...s,
+            profiles: { username: s.author_username },
+          }));
         setSavedStories(formattedSaved);
+      } else {
+        setSavedStories([]);
       }
 
     } catch (error) {

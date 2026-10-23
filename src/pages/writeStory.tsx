@@ -16,6 +16,7 @@ const WriteStory = () => {
 
   const [storiesToday, setStoriesToday] = useState(0);
   const [isLoadingLimit, setIsLoadingLimit] = useState(true);
+  const [limitError, setLimitError] = useState(false);
   const LIMIT_PER_DAY = 1;
 
   useEffect(() => {
@@ -31,32 +32,45 @@ const WriteStory = () => {
 
   useEffect(() => {
     const checkDailyLimit = async () => {
+      setIsLoadingLimit(true);
+      setLimitError(false);
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError) throw authError;
+        if (!user) {
+          navigate("/login", { replace: true });
+          return;
+        }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayISO = today.toISOString();
+        // A data usada no limite deve ser a mesma do trigger do banco.
+        const dateParts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Sao_Paulo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).formatToParts(new Date());
+        const part = (type: string) => dateParts.find((p) => p.type === type)?.value;
+        const brazilDate = `${part("year")}-${part("month")}-${part("day")}`;
 
-        // AGORA CONSULTA A NOVA TABELA "daily_story_limits"
+        // O registro permanece nesta tabela mesmo se o relato for excluído.
         const { count, error } = await supabase
-          .from('daily_story_limits')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .gte('created_at', todayISO);
+          .from("daily_story_limits")
+          .select("story_date", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("story_date", brazilDate);
 
         if (error) throw error;
         setStoriesToday(count || 0);
       } catch (error) {
         console.error("Erro ao verificar limite:", error);
+        setLimitError(true); // Não liberar publicação sem validar o limite.
       } finally {
         setIsLoadingLimit(false);
       }
     };
 
-    checkDailyLimit();
-  }, []);
+    void checkDailyLimit();
+  }, [navigate]);
 
   const generateAudioInBackground = async (storyId: string, textContent: string, userId: string) => {
     try {
@@ -107,127 +121,27 @@ const WriteStory = () => {
   };
 
   
-const generateImageInBackground = async (
-  storyId: string,
-  storyTitle: string,
-  userId: string
-) => {
-  try {
-    console.log("Iniciando geração da capa...");
-
-    const openAiKey = import.meta.env.VITE_OPENAI_API_KEY;
-
-    if (!openAiKey) {
-      throw new Error("Chave da OpenAI não configurada.");
-    }
-
-    const prompt = `
-Crie uma capa ilustrada para um relato sobrenatural de terror.
-Título do relato: "${storyTitle}".
-
-Estilo cinematográfico, sombrio, misterioso e assustador.
-Use sombras profundas, neblina, casas abandonadas,
-silhuetas misteriosas e iluminação dramática.
-A imagem deve transmitir suspense e medo psicológico,
-sem sangue, ferimentos, mutilação ou violência gráfica.
-Não inclua palavras, letras ou títulos na imagem.
-`;
-    // 1. Solicita a geração da imagem
-    const aiResponse = await fetch(
-      "https://api.openai.com/v1/images/generations",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-image-2.5-sunburst",
-          prompt,
-          n: 1,
-          size: "1024x1024",
-          output_format: "png",
-        }),
-      }
-    );
-
-    if (!aiResponse.ok) {
-      const errorDetails = await aiResponse.text();
-      throw new Error(
-        `Erro na OpenAI (${aiResponse.status}): ${errorDetails}`
-      );
-    }
-
-    const data = await aiResponse.json();
-
-    // 2. Obtém a imagem codificada em Base64
-    const base64Image = data.data?.[0]?.b64_json;
-
-    if (!base64Image) {
-      throw new Error(
-        "A API não retornou a imagem no campo b64_json."
-      );
-    }
-
-    // 3. Decodifica o Base64 para os bytes reais da imagem
-    const binaryString = atob(base64Image);
-    const bytes = new Uint8Array(binaryString.length);
-
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-
-    const imageBlob = new Blob([bytes], {
-      type: "image/png",
-    });
-
-    // 4. Verifica se os bytes correspondem a um PNG
-    const signature = new Uint8Array(await imageBlob.slice(0, 8).arrayBuffer());
-    const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
-
-    if (!pngSignature.every((value, i) => signature[i] === value)) {
-      throw new Error("Os dados recebidos não constituem um PNG válido.");
-    }
-
-    console.log("Imagem decodificada:", imageBlob.size, "bytes");
-
-    // 5. Faz o upload dos bytes da imagem para o Supabase
-    const fileName = `${userId}-${Date.now()}.png`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("covers")
-      .upload(fileName, imageBlob, {
-        contentType: "image/png",
-        upsert: false,
+  // A geração da imagem agora acontece somente no servidor (Edge Function).
+  // Nunca envie a chave da OpenAI no JavaScript do navegador.
+  const generateImageInBackground = async (storyId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-story-cover", {
+        body: { storyId },
       });
-
-    if (uploadError) {
-      throw uploadError;
+      if (error) throw error;
+      console.log("Geração da capa solicitada:", data);
+    } catch (error) {
+      // A publicação permanece válida e exibe a capa padrão.
+      console.error("Não foi possível solicitar a capa:", error);
     }
-
-    // 6. Obtém a URL pública da imagem armazenada
-    const {
-      data: { publicUrl: finalImageUrl },
-    } = supabase.storage.from("covers").getPublicUrl(fileName);
-
-    // 7. Salva a URL na tabela stories
-    const { error: updateError } = await supabase
-      .from("stories")
-      .update({ image_url: finalImageUrl })
-      .eq("id", storyId);
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    console.log("Capa gerada e anexada com sucesso!", finalImageUrl);
-  } catch (error) {
-    console.error("Erro ao gerar ou salvar a capa:", error);
-  }
-};
+  };
 
   const handlePublish = async () => {
-    if (storiesToday >= LIMIT_PER_DAY) {
+    if (isLoadingLimit || limitError || storiesToday >= LIMIT_PER_DAY) {
+      if (isLoadingLimit || limitError) {
+        alert("Não foi possível verificar seu limite diário. Recarregue a página.");
+        return;
+      }
       alert("Você já atingiu o limite de publicações por hoje.");
       return;
     }
@@ -262,8 +176,10 @@ Não inclua palavras, letras ou títulos na imagem.
       if (error) throw error;
 
       // Inicia as duas gerações simultaneamente em segundo plano
-      generateAudioInBackground(newStory.id, content, user.id);
-      generateImageInBackground(newStory.id, title, user.id);
+      void generateAudioInBackground(newStory.id, content, user.id);
+      // Aguarda apenas a confirmação de que o trabalho foi aceito no servidor.
+      // A geração da imagem continua no Supabase sem depender da página aberta.
+      await generateImageInBackground(newStory.id);
       
       navigate("/", { replace: true }); 
       
@@ -286,7 +202,7 @@ Não inclua palavras, letras ou títulos na imagem.
         <span className="font-bold tracking-wider text-sm uppercase">Novo Relato</span>
         <button 
           onClick={handlePublish}
-          disabled={isSubmitting || storiesToday >= LIMIT_PER_DAY}
+          disabled={isSubmitting || isLoadingLimit || limitError || storiesToday >= LIMIT_PER_DAY}
           className="text-primary hover:text-primary/80 flex items-center gap-2 font-bold transition-colors disabled:opacity-50"
         >
           {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
@@ -298,6 +214,20 @@ Não inclua palavras, letras ou títulos na imagem.
           <div className="flex-1 flex flex-col items-center justify-center text-primary">
             <Loader2 className="w-8 h-8 animate-spin" />
             <p className="mt-4 text-sm font-bold uppercase">Verificando limite...</p>
+          </div>
+        ) : limitError ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center gap-4">
+            <Ghost className="w-16 h-16 text-red-500" />
+            <h2 className="text-2xl font-bold">Não foi possível verificar seu limite</h2>
+            <p className="text-muted-foreground text-sm">
+              Confira a conexão com o Supabase e tente novamente.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-bold"
+            >
+              Tentar novamente
+            </button>
           </div>
         ) : storiesToday >= LIMIT_PER_DAY ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center gap-4">

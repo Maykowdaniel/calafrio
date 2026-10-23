@@ -23,6 +23,8 @@ const StoryDetail = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
+  // NOVO ESTADO: Controla o modal de autor anónimo
+  const [showAnonymousModal, setShowAnonymousModal] = useState(false);
 
   const commentsSectionRef = useRef<HTMLDivElement>(null);
 
@@ -107,8 +109,8 @@ const StoryDetail = () => {
       setCurrentUser(user);
 
       const { data: storyData, error: storyError } = await supabase
-        .from("stories")
-        .select(`*, profiles(username)`)
+        .from("stories_public")
+        .select("*")
         .eq("id", id)
         .single();
 
@@ -197,8 +199,11 @@ const StoryDetail = () => {
     }
   };
 
+  // Atualizado: Mostra o modal customizado se for anónimo
   const handleAuthorClick = () => {
-    if (!story.is_anonymous && story.user_id) {
+    if (story.is_anonymous) {
+      setShowAnonymousModal(true);
+    } else if (story.user_id) {
       navigate(`/autor/${story.user_id}`);
     }
   };
@@ -214,10 +219,9 @@ const StoryDetail = () => {
 
   if (!story) return null;
 
-  const authorName = story.is_anonymous ? "Anônimo" : (story.profiles?.username || "Usuário");
+  const authorName = story.author_username || (story.is_anonymous ? "Anônimo" : "Usuário");
   const postDate = new Date(story.created_at).toLocaleDateString("pt-BR");
 
-  // Cálculo da percentagem de progresso para a barra customizada
   const progressPercentage = durationSec > 0 ? (currentTime / durationSec) * 100 : 0;
 
   return (
@@ -238,7 +242,11 @@ const StoryDetail = () => {
           <p className="text-sm text-muted-foreground mt-2">
             Por <span 
                   onClick={handleAuthorClick}
-                  className={`font-bold transition-colors ${story.is_anonymous ? 'text-primary' : 'text-primary hover:text-secondary hover:underline cursor-pointer'}`}
+                  className={`font-bold transition-colors cursor-pointer ${
+                    story.is_anonymous 
+                      ? 'text-primary' 
+                      : 'text-primary hover:text-secondary hover:underline'
+                  }`}
                 >
                   @{authorName}
                 </span> • {postDate} • {readTime} min de leitura
@@ -247,7 +255,6 @@ const StoryDetail = () => {
       </div>
 
       <main className="flex-1 flex flex-col px-5 py-6 max-w-2xl mx-auto w-full gap-8">
-        {/* Player de áudio oculto */}
         {story.audio_url && (
           <audio 
             ref={audioRef} 
@@ -262,7 +269,6 @@ const StoryDetail = () => {
         {story.audio_url && (
           <div className="bg-zinc-900/50 border border-border rounded-2xl p-4 flex flex-col gap-4">
             
-            {/* Linha superior: Botão de play, Waveform animada e Título */}
             <div className="flex items-center gap-4">
               <button onClick={togglePlay} className="flex-shrink-0 w-14 h-14 rounded-full border-2 border-primary glow-purple flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer">
                 {isPlaying ? <Pause className="w-6 h-6 text-primary" /> : <Play className="w-6 h-6 text-primary ml-1" />}
@@ -276,7 +282,6 @@ const StoryDetail = () => {
               </div>
             </div>
 
-            {/* Linha inferior: Controles de progresso e voltar/avançar */}
             <div className="flex items-center gap-3">
               <button onClick={skipBackward} className="text-muted-foreground hover:text-primary transition-colors cursor-pointer p-1">
                 <RotateCcw className="w-5 h-5" />
@@ -285,11 +290,6 @@ const StoryDetail = () => {
               <div className="flex-1 flex items-center gap-2 text-xs text-muted-foreground font-mono">
                 <span className="min-w-[40px] text-right">{formatTime(currentTime)}</span>
                 
-                {/* 
-                  Barra de progresso customizada: 
-                  - Ocultamos a 'bolinha' nativa usando classes arbitrárias do Tailwind ([&::-webkit-slider-thumb])
-                  - Substituímos por uma pequena barra vertical (w-2 h-4) e usamos um linear-gradient para pintar o fundo.
-                */}
                 <input
                   type="range"
                   min={0}
@@ -387,6 +387,33 @@ const StoryDetail = () => {
                 className="px-4 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(168,85,247,0.4)] flex items-center justify-center min-w-[120px]"
               >
                 Fazer Login
+              </button>
+            </div>
+            
+          </div>
+        </div>
+      )}
+
+      {/* NOVO: Modal de Autor Anônimo */}
+      {showAnonymousModal && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-950 border border-border rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4 animate-in fade-in zoom-in duration-200 shadow-[0_0_40px_rgba(168,85,247,0.15)]">
+            
+            <div className="flex items-center gap-3 text-primary">
+              <Ghost className="w-6 h-6 animate-pulse" />
+              <h3 className="text-xl font-bold uppercase tracking-wider">Identidade Oculta</h3>
+            </div>
+            
+            <p className="text-foreground/80 text-sm leading-relaxed">
+              A identidade deste autor está oculta nas sombras. Trata-se de um relato completamente anônimo.
+            </p>
+            
+            <div className="flex justify-end mt-4">
+              <button 
+                onClick={() => setShowAnonymousModal(false)} 
+                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(168,85,247,0.4)] flex items-center justify-center min-w-[120px]"
+              >
+                Compreendido
               </button>
             </div>
             

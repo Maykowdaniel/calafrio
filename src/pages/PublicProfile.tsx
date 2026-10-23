@@ -28,7 +28,7 @@ const PublicProfile = () => {
 
       // 2. Busca apenas os relatos PÚBLICOS desse autor
       const { data: storiesData } = await supabase
-        .from("stories")
+        .from("stories_public")
         .select("*")
         .eq("user_id", id)
         .eq("is_anonymous", false) // Filtro crucial: Só as públicas!

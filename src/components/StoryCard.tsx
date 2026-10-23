@@ -16,6 +16,10 @@ const StoryCard = ({ story }: StoryCardProps) => {
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const [hasSaved, setHasSaved] = useState(false);
+  const [showAnonymousModal, setShowAnonymousModal] = useState(false);
+
+  // Compatível também com versões antigas do Index que não passavam is_anonymous.
+  const isAnonymous = story.is_anonymous === true || story.author === "Anônimo";
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   const wordsCount = story.content?.trim().split(/\s+/).length || 0;
@@ -85,13 +89,21 @@ const StoryCard = ({ story }: StoryCardProps) => {
   };
 
   const handleAuthorClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); 
-    if (!story.is_anonymous && story.user_id) {
+    // Não abrir o relato quando o usuário clicar apenas no nome do autor.
+    e.stopPropagation();
+
+    if (isAnonymous) {
+      setShowAnonymousModal(true);
+      return;
+    }
+
+    if (story.user_id) {
       navigate(`/autor/${story.user_id}`);
     }
   };
 
   return (
+    <>
     <div 
       onClick={handleOpenStory} 
       className="relative w-full rounded-2xl overflow-hidden cursor-pointer transition-transform active:scale-[0.98]" 
@@ -107,12 +119,16 @@ const StoryCard = ({ story }: StoryCardProps) => {
       <div className="relative z-10 flex flex-col justify-end h-full p-5" style={{ minHeight: "70vh" }}>
         <h2 className="text-2xl font-extrabold text-foreground leading-tight mb-2 uppercase tracking-wide">{story.title}</h2>
         <p className="text-sm text-muted-foreground mb-6">
-          Por <span 
+          Por <button
+                type="button"
                 onClick={handleAuthorClick}
-                className={`font-bold transition-colors ${story.is_anonymous ? 'text-primary' : 'text-primary hover:text-secondary hover:underline cursor-pointer'}`}
+                className={`font-bold text-primary transition-colors cursor-pointer ${
+                  isAnonymous ? 'hover:text-primary/80' : 'hover:text-secondary hover:underline'
+                }`}
+                aria-label={isAnonymous ? 'Sobre o autor anônimo' : `Abrir perfil de ${story.author}`}
               >
-                @{story.author}
-              </span> • {story.timeAgo}
+                @{isAnonymous ? "Anônimo" : story.author}
+              </button> • {story.timeAgo}
         </p>
 
         {/* PLAYER DE ÁUDIO (SÓ APARECE SE TIVER ÁUDIO) */}
@@ -159,6 +175,46 @@ const StoryCard = ({ story }: StoryCardProps) => {
         </div>
       </div>
     </div>
+
+    {/* Modal fora do card para o clique não abrir o relato. */}
+    {showAnonymousModal && (
+      <div
+        role="presentation"
+        onClick={(event) => {
+          event.stopPropagation();
+          setShowAnonymousModal(false);
+        }}
+        className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`anonymous-dialog-${story.id}`}
+          onClick={(event) => event.stopPropagation()}
+          className="bg-zinc-950 border border-border rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4 animate-in fade-in zoom-in duration-200 shadow-[0_0_40px_rgba(168,85,247,0.15)]"
+        >
+          <div className="flex items-center gap-3 text-primary">
+            <Ghost className="w-6 h-6 animate-pulse" />
+            <h3 id={`anonymous-dialog-${story.id}`} className="text-xl font-bold uppercase tracking-wider">
+              Identidade Oculta
+            </h3>
+          </div>
+          <p className="text-foreground/80 text-sm leading-relaxed">
+            A identidade deste autor está oculta nas sombras. Trata-se de um relato completamente anônimo.
+          </p>
+          <div className="flex justify-end mt-4">
+            <button
+              type="button"
+              onClick={() => setShowAnonymousModal(false)}
+              className="px-4 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(168,85,247,0.4)] flex items-center justify-center min-w-[120px]"
+            >
+              Compreendido
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

@@ -30,27 +30,27 @@ const Index = () => {
   const fetchStories = async () => {
     try {
       const { data, error } = await supabase
-        .from("stories")
-        .select(`
-          user_id,
-          id, title,image_url,content, voice_type, audio_url, is_anonymous, likes_count, comments_count, created_at, genre, profiles ( username )
-        `)
+        // Apenas os campos seguros da view pública chegam ao navegador.
+        .from("stories_public")
+        .select("id, user_id, title, content, genre, voice_type, created_at, likes_count, comments_count, is_anonymous, image_url, audio_url, author_username")
         .order("created_at", { ascending: false }); 
 
       if (error) throw error;
 
       const formattedStories = data.map((story: any) => ({
+        // O user_id de um autor anônimo já chega como null do servidor.
         user_id: story.user_id,
+        is_anonymous: story.is_anonymous === true,
         id: story.id,
         title: story.title,
-        author: story.is_anonymous ? "Anônimo" : (story.profiles?.username || "Usuário"),
+        author: story.author_username || "Usuário",
         content: story.content,
         timeAgo: new Date(story.created_at).toLocaleDateString("pt-BR"), 
         duration: "1min", 
         voiceType: story.voice_type || "Voz Sombria",
         genre: story.genre || "Terror",
-        likes: story.likes_count.toString(),
-        comments: story.comments_count.toString(),
+        likes: String(story.likes_count ?? 0),
+        comments: String(story.comments_count ?? 0),
         image: story.image_url || defaultBg,
         audio_url: story.audio_url,
       }));
