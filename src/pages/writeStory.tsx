@@ -5,6 +5,22 @@ import { supabase } from "../supabase";
 
 const GENRES = ["Terror", "Suspense", "Aventura", "Maledite", "Terror no interior", "Sobrenatural"];
 
+// Vozes disponíveis para narrar os relatos do Calafrio.
+const NARRATOR_VOICES = [
+  "4XmhZ74tBbUVCXIYNMMo",
+  "m151rjrbWXbBqyq56tly",
+  "NFmEzNOony1UsEJGXLth",
+  "HOfBIVLhom4mc9WvXfyH",
+  "ohZOfA9iwlZ5nOsoY7LB",
+  "ORgG8rwdAiMYRug8RJwR",
+  "MA970ZNagubdplnfHEiJ",
+];
+
+const getRandomNarratorVoice = (): string => {
+  const index = Math.floor(Math.random() * NARRATOR_VOICES.length);
+  return NARRATOR_VOICES[index];
+};
+
 const WriteStory = () => {
   const navigate = useNavigate();
   
@@ -76,7 +92,7 @@ const WriteStory = () => {
     try {
       console.log("Iniciando geração de áudio em background...");
       const elevenLabsKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
-      const voiceId = "MA970ZNagubdplnfHEiJ"; 
+      const voiceId = getRandomNarratorVoice(); 
       
       const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: "POST",
