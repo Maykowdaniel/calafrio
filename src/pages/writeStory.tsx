@@ -76,7 +76,7 @@ const WriteStory = () => {
     try {
       console.log("Iniciando geração de áudio em background...");
       const elevenLabsKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
-      const voiceId = "hpp4J3VqNfWAUOO0d1Us"; 
+      const voiceId = "MA970ZNagubdplnfHEiJ"; 
       
       const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: "POST",
