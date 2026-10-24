@@ -19,6 +19,8 @@ const Profile = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [storyToDelete, setStoryToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     fetchUserData();
@@ -152,8 +154,19 @@ const Profile = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/");
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      setShowLogoutConfirm(false);
+      navigate("/", { replace: true });
+    } catch (error) {
+      console.error("Falha ao sair da conta:", error);
+      alert("Não foi possível sair da conta. Tente novamente.");
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   if (isLoading) {
@@ -171,7 +184,7 @@ const Profile = () => {
           <ArrowLeft className="w-6 h-6" />
         </button>
         <span className="font-bold tracking-wider text-sm text-foreground uppercase">Meu Perfil</span>
-        <button onClick={handleLogout} className="bg-primary text-primary-foreground flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold shadow-[0_0_15px_rgba(168,85,247,0.4)] hover:scale-105 transition-transform active:scale-95">
+        <button onClick={() => setShowLogoutConfirm(true)} className="bg-primary text-primary-foreground flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold shadow-[0_0_15px_rgba(168,85,247,0.4)] hover:scale-105 transition-transform active:scale-95">
           <LogOut className="w-4 h-4" />
           <span className="hidden sm:block uppercase tracking-wider text-xs">Sair</span>
         </button>
@@ -260,6 +273,33 @@ const Profile = () => {
 
         </div>
       </main>
+
+      {/* Confirmação antes de encerrar a sessão Google/Supabase */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="logout-title"
+            className="bg-zinc-950 border border-border rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4 animate-in fade-in zoom-in duration-200 shadow-[0_0_40px_rgba(168,85,247,0.15)]">
+            <div className="flex items-center gap-3 text-primary">
+              <LogOut className="w-6 h-6" />
+              <h3 id="logout-title" className="text-xl font-bold text-foreground">Sair da conta?</h3>
+            </div>
+            <p className="text-foreground/80 text-sm leading-relaxed">
+              Tem certeza de que deseja sair do Calafrio? Você precisará entrar novamente com o Google para publicar novos relatos.
+            </p>
+            <div className="flex justify-end gap-3 mt-3">
+              <button onClick={() => setShowLogoutConfirm(false)} disabled={isLoggingOut}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold text-foreground hover:bg-zinc-900 transition-colors disabled:opacity-50">
+                Cancelar
+              </button>
+              <button onClick={() => void handleLogout()} disabled={isLoggingOut}
+                className="px-4 py-2.5 rounded-xl text-sm font-bold bg-primary text-primary-foreground hover:opacity-90 flex items-center justify-center gap-2 min-w-[120px] disabled:opacity-50">
+                {isLoggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+                {isLoggingOut ? "Saindo..." : "Sim, sair"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Customizado de Deletar (Mantido igual) */}
       {storyToDelete && (
